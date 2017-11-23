@@ -29,6 +29,7 @@ PARSER.add_argument('--debug', action='store_true', help='Include debug output (
 PARSER.add_argument('--data-dir', '-d', help='Directory to store spreadsheet data in ', default=DEFAULT_DATA)
 parsers = PARSER.add_subparsers(dest='command')
 run_parser = parsers.add_parser('run', help='Run this shell command whenever something changes. Use {name} for the value of name.')
+run_parser.add_argument('--listen', '-l', type=str, help='Fire if the value of this parameter changed', action='append')
 run_parser.add_argument('--output', '-o', type=str, help='Write output to this file (overwrite on change)')
 run_parser.add_argument('expr', type=str, action='append')
 set_parser = parsers.add_parser('set', help='Set a variables value')
@@ -249,7 +250,7 @@ def main():
             event_bus = EventBus(client)
             expr = ' '.join(args.expr)
             needed_args = list(referenced_names(expr))
-            with state.with_listen(client_id, needed_args):
+            with state.with_listen(client_id, needed_args + list(args.listen)):
                 while True:
                     try:
                         values = state.get_values(needed_args)
@@ -260,7 +261,7 @@ def main():
                         with file_manager as stream:
                             subprocess.call(expr.format(**values), shell=True, executable='/bin/bash', stdout=stream)
 
-                    event_bus.wait_for_changes(needed_args)
+                    event_bus.wait_for_changes(needed_args + list(args.listen))
     elif args.command in ('set', 'reset'):
         if args.command == 'set':
             changes = dict([(args.key, args.value)])
