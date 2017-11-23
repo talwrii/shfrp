@@ -27,6 +27,7 @@ PARSER.add_argument('--debug', action='store_true', help='Include debug output (
 PARSER.add_argument('--data-dir', '-d', help='Directory to store spreadsheet data in ', default=DEFAULT_DATA)
 parsers = PARSER.add_subparsers(dest='command')
 run_parser = parsers.add_parser('run', help='Run this shell command whenever something changes. Use {name} for the value of name.')
+run_parser.add_argument('--output', '-o', type=str, help='Write output to this file (overwrite on change)')
 run_parser.add_argument('expr', type=str, action='append')
 set_parser = parsers.add_parser('set', help='Set a variables value')
 set_parser.add_argument('key', type=str)
@@ -218,7 +219,9 @@ def main():
                 except ShfrpNoValue as e:
                     show_info('Could not find parameter {} in {}'.format(e.key, expr))
                 else:
-                    subprocess.call(expr.format(**values), shell=True, executable='/bin/bash')
+                    file_manager = open(args.output, 'w') if args.output is not None else identity_manager(sys.stdout)
+                    with file_manager as stream:
+                        subprocess.call(expr.format(**values), shell=True, executable='/bin/bash', stdout=stream)
 
                 LOGGER.debug('Waiting for changes...')
                 event_bus.wait_for_changes(needed_args)
