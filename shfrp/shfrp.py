@@ -15,6 +15,7 @@ import time
 import uuid
 
 import fasteners
+import termcolor
 
 LOGGER = logging.getLogger()
 
@@ -35,6 +36,9 @@ set_parser.add_argument('key', type=str)
 set_parser.add_argument('value', type=str)
 reset_parser = parsers.add_parser('reset', help='Cause variables that use this parameter to update')
 reset_parser.add_argument('parameter', type=str)
+
+params_parser = parsers.add_parser('params', help='Print parameters')
+params_parser.add_argument('--no-color', action='store_false', dest='color', default=True)
 
 bus_parser = parsers.add_parser('bus', help='Listen to messages on the event bus')
 
@@ -113,6 +117,7 @@ class EventBus(object):
 
 
     def wait_for_changes(self, variables):
+        LOGGER.debug('Waiting for changes to %r...', variables)
         variables = set(variables)
         for message in self._client.get_messages():
 
@@ -134,20 +139,46 @@ class State(object):
     @contextlib.contextmanager
     def with_data(self):
         with with_json_data(os.path.join(self._data_dir, 'data.json')) as data:
+            data.setdefault('listened', dict())
+            data.setdefault('parameters', dict())
             yield data
+
+    @contextlib.contextmanager
+    def with_listen(self, listener, listened):
+        with self.with_data() as data:
+            for param in listened:
+                data["listened"].setdefault(param, list())
+            data["listened"][param].append(listener)
+
+        try:
+            yield
+        finally:
+            with self.with_data() as data:
+                for param in listened:
+                    data.setdefault(param, list())
+                data[param].remove(listener)
 
     def get_values(self, keys):
         LOGGER.debug('Get values %r', keys)
         with self.with_data() as data:
             try:
-                return {k: data[k] for k in keys}
+                return {k: data["parameters"][k] for k in keys}
             except KeyError as k:
                 key, = k.args
                 raise ShfrpNoValue(key)
 
     def set(self, pairs):
         with self.with_data() as data:
-            data.update(**pairs)
+            data["parmaters"].update(**pairs)
+
+    @contextlib.contextmanager
+    def with_listened(self):
+        with self.with_data() as data:
+            result = []
+            for name, listeners in data['listened'].items():
+                value = data['parameters'].get(name)
+                result.append([name, value, list(listeners)])
+            yield result
 
 
 class ShfrpNoValue(Exception):
@@ -213,22 +244,23 @@ def main():
                 print(json.dumps(message))
 
     if args.command == 'run':
+        client_id = str(uuid.uuid4())
         with StupidPubSub.with_client(event_file) as client:
             event_bus = EventBus(client)
             expr = ' '.join(args.expr)
             needed_args = list(referenced_names(expr))
-            while True:
-                try:
-                    values = state.get_values(needed_args)
-                except ShfrpNoValue as e:
-                    show_info('Could not find parameter {} in {}'.format(e.key, expr))
-                else:
-                    file_manager = open(args.output, 'w') if args.output is not None else identity_manager(sys.stdout)
-                    with file_manager as stream:
-                        subprocess.call(expr.format(**values), shell=True, executable='/bin/bash', stdout=stream)
+            with state.with_listen(client_id, needed_args):
+                while True:
+                    try:
+                        values = state.get_values(needed_args)
+                    except ShfrpNoValue as e:
+                        show_info('Could not find parameter {} in {}'.format(e.key, expr))
+                    else:
+                        file_manager = open(args.output, 'w') if args.output is not None else identity_manager(sys.stdout)
+                        with file_manager as stream:
+                            subprocess.call(expr.format(**values), shell=True, executable='/bin/bash', stdout=stream)
 
-                LOGGER.debug('Waiting for changes...')
-                event_bus.wait_for_changes(needed_args)
+                    event_bus.wait_for_changes(needed_args)
     elif args.command in ('set', 'reset'):
         if args.command == 'set':
             changes = dict([(args.key, args.value)])
@@ -242,6 +274,15 @@ def main():
         pub = StupidPubSub.Publisher(event_file)
         pub.start()
         pub.push(message)
+    elif args.command in 'params':
+        with state.with_listened() as listened:
+            for param, value, _listeners in listened:
+                if args.color:
+                    flag = termcolor.colored('set', 'green') if value is not None else termcolor.colored('unset', 'red')
+                else:
+                    flag = 'set' if value is not None else 'unset'
+                print(param, flag)
+
     else:
         raise ValueError(args.command)
 
