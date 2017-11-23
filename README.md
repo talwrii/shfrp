@@ -1,6 +1,20 @@
 # shfrp
 Reactive (non-functional) programming for the command line. A spreadsheet without the sheet that interacts with bash.
 
+# Usage
+```
+# Print name whenever it changes
+shfrp run 'echo {name}'
+
+# Update the parameter name to "Jim"
+shfrp set name Jim
+```
+# Caveats
+
+This tool is currently made of chewing gum, glue and bits of paper. This is likely non suitable for high performance data processing.
+
+The concept of "saving your spreadsheet" becomes quite nebulous. When bits of it are on the command line.
+
 
 # Motivation
 
@@ -15,21 +29,6 @@ Command-line tools that address similar problems include [watch](https://linux.d
 
 The space of [functional (and non-functional) reactive programming](https://en.wikipedia.org/wiki/Functional_reactive_programming) is fairly crowded. This tool isn't really a natural bed-fellow of these tools. Tools like (Analytica)[http://www.lumina.com/] liberate the functional reactive programming of spreadsheets and place it instead in the language of "influence diagrams" (a business / modelling term for directed acyclic graphs). [Make](https://www.gnu.org/software/make/) deals with partial recalculation of dependency graphs using bash scripts, though is couched in terms of changes to files and manual recalculation.
 
-#Usage
-
-```
-# Print name whenever it changes
-shfrp run 'echo {name}'
-
-# Update the value of jim
-shfrp set name Jim
-```
-
-# Caveats
-
-This tool is currently made of chewing gum, glue and bits of paper. This is likely non suitable for high performance data munging.
-
-The concept of "saving your spreadsheet" becomes quite nebulous. When bits of it are on the command line.
 
 # Alternatives and prior work
 
