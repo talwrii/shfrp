@@ -37,8 +37,9 @@ bus_parser = parsers.add_parser('bus', help='Listen to messages on the event bus
 
 
 def referenced_names(format_string):
-    for _, name, _, _ in (string.Formatter().parse(format_string)):
-        yield name
+    for _, name, _, _ in string.Formatter().parse(format_string):
+        if name is not None:
+            yield name
 
 class StupidPubSub(object):
     # https://unix.stackexchange.com/questions/406378/command-line-pub-sub-without-a-server/406424?noredirect=1#comment727192_406424
