@@ -84,7 +84,9 @@ class StupidPubSub(object):
                 if line == '':
                     break
                 else:
-                    yield json.loads(line)
+                    message = json.loads(line)
+                    LOGGER.debug('Got message %r', message)
+                    yield message
 
         def stop(self):
             LOGGER.debug('Killing event bus proc')
@@ -111,9 +113,8 @@ class EventBus(object):
     def wait_for_changes(self, variables):
         variables = set(variables)
         for message in self._client.get_messages():
-            LOGGER.debug('Got message %r', message)
-            
-            if message['type'] == 'parameter_update' and set(message['changes']) & set(variables):
+
+            if message['type'] == 'parameter_update' and set(message['changed']) & set(variables):
                 return
         else:
             raise ConnectionLost()
