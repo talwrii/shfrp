@@ -36,7 +36,6 @@ set_parser.add_argument('value', type=str)
 reset_parser = parsers.add_parser('reset', help='Cause variables that use this parameter to update')
 reset_parser.add_argument('parameter', type=str)
 
-
 bus_parser = parsers.add_parser('bus', help='Listen to messages on the event bus')
 
 
@@ -96,7 +95,6 @@ class StupidPubSub(object):
             LOGGER.debug('Killing event bus proc')
             if self._proc:
                 self._proc.kill()
-        
 
     @classmethod
     @contextlib.contextmanager
@@ -120,12 +118,14 @@ class EventBus(object):
 
             if message['type'] == 'parameter_update' and set(message['changed']) & set(variables):
                 return
+            else:
+                LOGGER.debug('Ignoring message')
         else:
             raise ConnectionLost()
 
 class ConnectionLost(Exception):
     pass
-    
+
 
 class State(object):
     def __init__(self, data_dir):
@@ -135,8 +135,9 @@ class State(object):
     def with_data(self):
         with with_json_data(os.path.join(self._data_dir, 'data.json')) as data:
             yield data
-    
+
     def get_values(self, keys):
+        LOGGER.debug('Get values %r', keys)
         with self.with_data() as data:
             try:
                 return {k: data[k] for k in keys}
@@ -156,7 +157,7 @@ class ShfrpNoValue(Exception):
 
     def __str__(self):
         return 'No parameter {!r}'.format(self.key)
-    
+
 
 def read_json(filename):
     if os.path.exists(filename):
@@ -202,7 +203,7 @@ def main():
     event_file = os.path.join(args.data_dir, 'events')
 
     ensure_file(event_file)
-    
+
     state = State(args.data_dir)
 
     if args.command == 'bus':
@@ -229,7 +230,6 @@ def main():
                 LOGGER.debug('Waiting for changes...')
                 event_bus.wait_for_changes(needed_args)
     elif args.command in ('set', 'reset'):
-
         if args.command == 'set':
             changes = dict([(args.key, args.value)])
             state.set(changes)
