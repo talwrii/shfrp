@@ -54,7 +54,7 @@ class StupidPubSub(object):
                 raise ValueError(self._stream)
 
             LOGGER.debug('Pushing to file: %r', self._event_file)
-            
+
             self._stream = open(self._event_file, 'a')
 
 
@@ -71,7 +71,7 @@ class StupidPubSub(object):
             if self._proc is not None:
                 raise ValueError(self._proc)
 
-            command = ["tail",  "-f", self._event_file, '-n', '0'] 
+            command = ["tail",  "-f", self._event_file, '-n', '0']
             LOGGER.debug('Running %r', command)
             self._proc = subprocess.Popen(
                 command,
