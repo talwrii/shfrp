@@ -9,6 +9,7 @@ import logging
 import os
 import string
 import subprocess
+import sys
 import threading
 import time
 import uuid
@@ -32,6 +33,8 @@ run_parser.add_argument('expr', type=str, action='append')
 set_parser = parsers.add_parser('set', help='Set a variables value')
 set_parser.add_argument('key', type=str)
 set_parser.add_argument('value', type=str)
+reset_parser = parsers.add_parser('reset', help='Cause variables that use this parameter to update')
+reset_parser.add_argument('parameter', type=str)
 
 
 bus_parser = parsers.add_parser('bus', help='Listen to messages on the event bus')
@@ -225,19 +228,33 @@ def main():
 
                 LOGGER.debug('Waiting for changes...')
                 event_bus.wait_for_changes(needed_args)
-    elif args.command == 'set':
-        changes = dict([(args.key, args.value)])
-        state.set(changes)
+    elif args.command in ('set', 'reset'):
+
+        if args.command == 'set':
+            changes = dict([(args.key, args.value)])
+            state.set(changes)
+            messages = Messages.update(changes)
+        elif args.command == 'reset':
+            message = Messages.update(None, changed=[args.parameter])
+        else:
+            raise ValueError(args.cmmand)
+
         pub = StupidPubSub.Publisher(event_file)
         pub.start()
-        pub.push(Messages.update(changes))
+        pub.push(message)
     else:
         raise ValueError(args.command)
 
 class Messages(object):
     @staticmethod
-    def update(changes):
+    def update(changes, changed=None):
+        changed = set.union(set(changes) if changes else set() , set(changed) if changed else set())
         return dict(
             type='parameter_update', changes=changes,
             ident=str(uuid.uuid4()),
+            changed=list(changed),
             timestamp=time.time())
+
+@contextlib.contextmanager
+def identity_manager(x):
+    yield x
