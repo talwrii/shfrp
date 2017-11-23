@@ -170,7 +170,7 @@ class State(object):
 
     def set(self, pairs):
         with self.with_data() as data:
-            data["parmaters"].update(**pairs)
+            data["parameters"].update(**pairs)
 
     @contextlib.contextmanager
     def with_listened(self):
@@ -266,7 +266,7 @@ def main():
         if args.command == 'set':
             changes = dict([(args.key, args.value)])
             state.set(changes)
-            messages = Messages.update(changes)
+            message = Messages.update(changes)
         elif args.command == 'reset':
             message = Messages.update(None, changed=[args.parameter])
         else:
