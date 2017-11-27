@@ -248,6 +248,10 @@ def main():
                 print(json.dumps(message))
 
     if args.command == 'run':
+
+        if args.listen is None:
+            args.listen = []
+
         client_id = str(uuid.uuid4())
         with StupidPubSub.with_client(event_file) as client:
             event_bus = EventBus(client)
