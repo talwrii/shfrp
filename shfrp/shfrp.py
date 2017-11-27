@@ -231,6 +231,57 @@ def ensure_file(filename):
         with open(filename, 'w'):
             pass
 
+def run_loop(state, event_file, args):
+    client_id = str(uuid.uuid4())
+    with StupidPubSub.with_client(event_file) as client:
+        event_bus = EventBus(client)
+        expr = ' '.join(args.expr)
+        needed_args = list(referenced_names(expr))
+        with state.with_listen(client_id, needed_args + list(args.listen)):
+            while True:
+                try:
+                    values = state.get_values(needed_args)
+                except ShfrpNoValue as e:
+                    show_info('Could not find parameter {} in {}'.format(e.key, expr))
+                    event_bus.wait_for_changes(needed_args + list(args.listen))
+                    continue
+                else:
+                    command = expr.format(**values)
+                    if args.echo:
+                        print(command)
+                    else:
+                        file_manager = open(args.output, 'w') if args.output is not None else identity_manager(sys.stdout)
+                        LOGGER.debug('Writing to %r', file_manager)
+
+
+                        waiter = ThreadWaiter()
+                        with with_restore_tty():
+                            # vim was breaking C-c when killed.
+                            with file_manager as stream:
+                                p = subprocess.Popen(
+                                    command, shell=True, executable='/bin/bash',
+                                    stdout=stream)
+
+
+                                event_wait_thread, event_wait_event = waiter.spawn(event_bus.wait_for_changes, needed_args + list(args.listen))
+                                if args.kill:
+                                    waiter.spawn(p.wait)
+                                    LOGGER.debug('Waiting for process or event')
+                                    waiter.wait()
+                                    try:
+                                        LOGGER.debug('Killing process')
+                                        p.kill()
+                                    except OSError:
+                                        pass
+
+                                LOGGER.debug('Waiting for process %r...', p.pid)
+                                p.wait()
+                                LOGGER.debug('%r exited', p.pid)
+
+                # Use an event rather than thread.join
+                # so that C-c works
+                event_wait_event.wait()
+
 def main():
     args = PARSER.parse_args()
     if args.debug:
@@ -251,58 +302,10 @@ def main():
                 print(json.dumps(message))
 
     if args.command == 'run':
-
         if args.listen is None:
             args.listen = []
+        run_loop(state, event_file, args)
 
-        client_id = str(uuid.uuid4())
-        with StupidPubSub.with_client(event_file) as client:
-            event_bus = EventBus(client)
-            expr = ' '.join(args.expr)
-            needed_args = list(referenced_names(expr))
-            with state.with_listen(client_id, needed_args + list(args.listen)):
-                while True:
-                    try:
-                        values = state.get_values(needed_args)
-                    except ShfrpNoValue as e:
-                        show_info('Could not find parameter {} in {}'.format(e.key, expr))
-                    else:
-                        command = expr.format(**values)
-                        if args.echo:
-                            print(command)
-                        else:
-                            file_manager = open(args.output, 'w') if args.output is not None else identity_manager(sys.stdout)
-                            LOGGER.debug('Writing to %r', file_manager)
-
-
-                            waiter = ThreadWaiter()
-                            with with_restore_tty():
-                                # vim was breaking C-c when killed.
-                                with file_manager as stream:
-                                    p = subprocess.Popen(
-                                        command, shell=True, executable='/bin/bash',
-                                        stdout=stream)
-
-
-                                    event_wait_thread, event_wait_event = waiter.spawn(event_bus.wait_for_changes, needed_args + list(args.listen))
-                                    if args.kill:
-                                        waiter.spawn(p.wait)
-                                        LOGGER.debug('Waiting for process or event')
-                                        waiter.wait()
-                                        try:
-                                            LOGGER.debug('Killing process')
-                                            p.kill()
-                                        except OSError:
-                                            pass
-
-                                        p.wait()
-                                    LOGGER.debug('Waiting for process %r...', p.pid)
-                                    p.wait()
-                                    LOGGER.debug('%r exited', p.pid)
-
-                    # Use an event rather than thread.join
-                    # so that C-c works
-                    event_wait_event.wait()
     elif args.command in ('set', 'reset'):
         if args.command == 'set':
             changes = dict([(args.key, args.value)])
