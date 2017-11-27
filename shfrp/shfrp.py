@@ -29,8 +29,10 @@ PARSER.add_argument('--debug', action='store_true', help='Include debug output (
 PARSER.add_argument('--data-dir', '-d', help='Directory to store spreadsheet data in ', default=DEFAULT_DATA)
 parsers = PARSER.add_subparsers(dest='command')
 run_parser = parsers.add_parser('run', help='Run this shell command whenever something changes. Use {name} for the value of name.')
-run_parser.add_argument('--echo', action='store_true', default=False, help='Echo rather than run')
-run_parser.add_argument('--listen', '-l', type=str, help='Fire if the value of this parameter changed', action='append')
+run_parser.add_argument('--echo', action='store_true', default=False, help='Echo command rather than run')
+run_parser.add_argument(
+    '--listen', '-l', type=str, action='append',
+    help='Fire if the value of this parameter changed')
 run_parser.add_argument('--output', '-o', type=str, help='Write output to this file (overwrite on change)')
 run_parser.add_argument('expr', type=str, action='append')
 set_parser = parsers.add_parser('set', help='Set a variables value')
