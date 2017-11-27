@@ -153,15 +153,14 @@ class State(object):
         with self.with_data() as data:
             for param in listened:
                 data["listened"].setdefault(param, list())
-            data["listened"][param].append(listener)
-
+                data["listened"][param].append(listener)
         try:
             yield
         finally:
             with self.with_data() as data:
                 for param in listened:
-                    data.setdefault(param, list())
-                data[param].remove(listener)
+                    data["listened"].setdefault(param, list())
+                    data["listened"][param].remove(listener)
 
     def get_values(self, keys):
         LOGGER.debug('Get values %r', keys)
