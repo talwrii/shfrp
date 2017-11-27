@@ -17,6 +17,8 @@ import uuid
 import fasteners
 import termcolor
 
+import termios
+
 LOGGER = logging.getLogger()
 
 # make code as python 3 compatible as possible
@@ -30,6 +32,7 @@ PARSER.add_argument('--data-dir', '-d', help='Directory to store spreadsheet dat
 parsers = PARSER.add_subparsers(dest='command')
 run_parser = parsers.add_parser('run', help='Run this shell command whenever something changes. Use {name} for the value of name.')
 run_parser.add_argument('--echo', action='store_true', default=False, help='Echo command rather than run')
+run_parser.add_argument('--kill', action='store_true', default=False, help='Kill a command if an update is triggered')
 run_parser.add_argument(
     '--listen', '-l', type=str, action='append',
     help='Fire if the value of this parameter changed')
@@ -119,12 +122,10 @@ class EventBus(object):
     def __init__(self, client):
         self._client = client
 
-
     def wait_for_changes(self, variables):
         LOGGER.debug('Waiting for changes to %r...', variables)
         variables = set(variables)
         for message in self._client.get_messages():
-
             if message['type'] == 'parameter_update' and set(message['changed']) & set(variables):
                 return
             else:
@@ -233,7 +234,7 @@ def main():
     if args.debug:
         logging.basicConfig(level=logging.DEBUG)
 
-    LOGGER.debug('Started')
+    LOGGER.debug('Started %d', os.getpid())
 
     event_file = os.path.join(args.data_dir, 'events')
 
@@ -265,10 +266,37 @@ def main():
                             print(command)
                         else:
                             file_manager = open(args.output, 'w') if args.output is not None else identity_manager(sys.stdout)
-                            with file_manager as stream:
-                                subprocess.call(command, shell=True, executable='/bin/bash', stdout=stream)
+                            LOGGER.debug('Writing to %r', file_manager)
 
-                    event_bus.wait_for_changes(needed_args + list(args.listen))
+
+                            waiter = ThreadWaiter()
+                            with with_restore_tty():
+                                # vim was breaking C-c when killed.
+                                with file_manager as stream:
+                                    p = subprocess.Popen(
+                                        command, shell=True, executable='/bin/bash',
+                                        stdout=stream)
+
+
+                                    event_wait_thread, event_wait_event = waiter.spawn(event_bus.wait_for_changes, needed_args + list(args.listen))
+                                    if args.kill:
+                                        waiter.spawn(p.wait)
+                                        LOGGER.debug('Waiting for process or event')
+                                        waiter.wait()
+                                        try:
+                                            LOGGER.debug('Killing process')
+                                            p.kill()
+                                        except OSError:
+                                            pass
+
+                                        p.wait()
+                                    LOGGER.debug('Waiting for process %r...', p.pid)
+                                    p.wait()
+                                    LOGGER.debug('%r exited', p.pid)
+
+                    # Use an event rather than thread.join
+                    # so that C-c works
+                    event_wait_event.wait()
     elif args.command in ('set', 'reset'):
         if args.command == 'set':
             changes = dict([(args.key, args.value)])
@@ -307,3 +335,39 @@ class Messages(object):
 @contextlib.contextmanager
 def identity_manager(x):
     yield x
+
+def spawn(f, *args, **kwargs):
+	thread = threading.Thread(target=f, args=args, kwargs=kwargs)
+	thread.setDaemon(True)
+	thread.start()
+	return thread
+
+class ThreadWaiter(object):
+    def __init__(self):
+        self._event = threading.Event()
+
+    # waiter.spawn(func, *args, **kwargs)
+    def spawn(self, func, *args, **kwargs):
+        event = threading.Event()
+        return spawn(self.wrap, event, func, *args, **kwargs), event
+
+    def wrap(self, event, func, *args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        finally:
+            event.set()
+            self._event.set()
+
+    def wait(self):
+        self._event.wait()
+
+
+@contextlib.contextmanager
+def with_restore_tty():
+    out_settings = termios.tcgetattr(sys.stdout)
+    in_settings = termios.tcgetattr(sys.stdin)
+    try:
+        yield
+    finally:
+        termios.tcsetattr(sys.stdout, termios.TCSANOW, out_settings)
+        termios.tcsetattr(sys.stdout, termios.TCSANOW, in_settings)
