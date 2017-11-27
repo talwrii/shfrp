@@ -25,6 +25,8 @@ LOGGER = logging.getLogger()
 
 DEFAULT_DATA = os.path.join(os.environ['HOME'], '.config', 'shfrp')
 
+def json_option(parser):
+    parser.add_argument('--json', action='store_true', help='Output in machine readable json')
 
 PARSER = argparse.ArgumentParser(description='')
 PARSER.add_argument('--debug', action='store_true', help='Include debug output (to stderr)')
@@ -46,6 +48,7 @@ reset_parser.add_argument('parameter', type=str)
 
 params_parser = parsers.add_parser('params', help='Print parameters')
 params_parser.add_argument('--no-color', action='store_false', dest='color', default=True)
+json_option(params_parser)
 
 bus_parser = parsers.add_parser('bus', help='Listen to messages on the event bus')
 
@@ -314,13 +317,20 @@ def main():
         pub.start()
         pub.push(message)
     elif args.command in 'params':
+        json_result = []
         with state.with_listened() as listened:
             for param, value, _listeners in listened:
                 if args.color:
                     flag = termcolor.colored('set', 'green') if value is not None else termcolor.colored('unset', 'red')
                 else:
                     flag = 'set' if value is not None else 'unset'
-                print(param, flag)
+                if not args.json:
+                    print(param, flag, repr(value))
+                else:
+                    json_result.append(dict(name=param, value=value))
+
+        if args.json:
+            print(json.dumps(json_result))
 
     else:
         raise ValueError(args.command)
