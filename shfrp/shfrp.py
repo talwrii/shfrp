@@ -46,6 +46,11 @@ set_parser.add_argument('value', type=str)
 reset_parser = parsers.add_parser('reset', help='Cause variables that use this parameter to update')
 reset_parser.add_argument('parameter', type=str)
 
+stream_param = parsers.add_parser(
+    'stream-param',
+    help='Read lines from standard in and reset parameters in response')
+stream_param.add_argument('param', type=str, help='name of variable we are streaming')
+
 params_parser = parsers.add_parser('params', help='Print parameters')
 params_parser.add_argument('--no-color', action='store_false', dest='color', default=True)
 json_option(params_parser)
@@ -319,6 +324,8 @@ def main():
         pub = StupidPubSub.Publisher(event_file)
         pub.start()
         pub.push(message)
+    elif args.command in 'stream-param':
+        stream_param(state, event_file, args.param)
     elif args.command in 'params':
         json_result = []
         with state.with_listened() as listened:
@@ -387,3 +394,15 @@ def with_restore_tty():
     finally:
         termios.tcsetattr(sys.stdout, termios.TCSANOW, out_settings)
         termios.tcsetattr(sys.stdout, termios.TCSANOW, in_settings)
+
+def stream_param(state, event_file, param):
+    pub = StupidPubSub.Publisher(event_file)
+    pub.start()
+    while True:
+        line = sys.stdin.readline()
+        if line == '':
+            break
+        changes = dict([(param, line)])
+        state.set(changes)
+        message = Messages.update(changes)
+        pub.push(message)
