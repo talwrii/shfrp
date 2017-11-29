@@ -6,6 +6,7 @@ import argparse
 import json
 import logging
 import subprocess
+import xerox
 
 LOGGER = logging.getLogger()
 
@@ -16,6 +17,7 @@ PARSER = argparse.ArgumentParser(description='')
 PARSER.add_argument('--debug', action='store_true', help='Print debug output')
 parsers = PARSER.add_subparsers(dest='command')
 subparser = parsers.add_parser('edit', help='Edit a value')
+subparser = parsers.add_parser('clip-push', help='Push something from the clipboard into a value')
 
 def rofi_prompt(prompt, choices):
     p = subprocess.Popen(
@@ -37,11 +39,10 @@ def main():
     args = PARSER.parse_args()
     if args.debug:
         logging.basicConfig(level=logging.DEBUG)
-    
+
     if args.command == 'edit':
         params = get_params()
         parameter = rofi_prompt('Which value to edit', [d['name'] for d in params])
-
 
         for param_data in params:
             if param_data['name'] == parameter:
@@ -56,5 +57,9 @@ def main():
 
         new_value = zenity_read('new value:', value if value is not None else '').strip('\n')
         subprocess.check_call(['shfrp', 'set', parameter, new_value])
+    elif args.command == 'clip-push':
+        params = get_params()
+        parameter = rofi_prompt('Which value to edit', [d['name'] for d in params])
+        subprocess.check_call(['shfrp', 'set', parameter, xerox.paste(xsel=True)])
     else:
     	raise ValueError(args.command)
