@@ -10,6 +10,7 @@ import os
 import string
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import uuid
@@ -270,8 +271,14 @@ def run_loop(state, event_file, args):
 
                             output, _ = p.communicate()
 
-                            with file_manager as stream:
-                                stream.write(output)
+                            if args.output is not None:
+                                # minimise the time the file is invalid
+                                with tempfile.NamedTemporaryFile(delete=False) as f:
+                                    f.write(output)
+                                    f.close()
+                                    os.rename(f.name, args.output)
+                            else:
+                                sys.stdout.write(output)
 
                             event_wait_thread, event_wait_event = waiter.spawn(
                                 event_bus.wait_for_changes, needed_args + list(args.listen))
