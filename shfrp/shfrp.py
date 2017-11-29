@@ -15,13 +15,12 @@ import time
 import uuid
 
 import fasteners
+import psutil
 import termcolor
 
 import termios
 
 LOGGER = logging.getLogger()
-
-# make code as python 3 compatible as possible
 
 DEFAULT_DATA = os.path.join(os.environ['HOME'], '.config', 'shfrp')
 
@@ -254,34 +253,41 @@ def run_loop(state, event_file, args):
                     command = expr.format(**values)
                     if args.echo:
                         print(command)
+                        event_bus.wait_for_changes(needed_args + list(args.listen))
+                        continue
                     else:
                         file_manager = open(args.output, 'w') if args.output is not None else identity_manager(sys.stdout)
                         LOGGER.debug('Writing to %r', file_manager)
 
 
                         waiter = ThreadWaiter()
+
+                        # vim was breaking C-c when killed.
                         with with_restore_tty():
-                            # vim was breaking C-c when killed.
+                            p = subprocess.Popen(
+                                command, shell=True, executable='/bin/bash',
+                                stdout=subprocess.PIPE)
+
+                            output, _ = p.communicate()
+
                             with file_manager as stream:
-                                p = subprocess.Popen(
-                                    command, shell=True, executable='/bin/bash',
-                                    stdout=stream)
+                                stream.write(output)
 
+                            event_wait_thread, event_wait_event = waiter.spawn(
+                                event_bus.wait_for_changes, needed_args + list(args.listen))
+                            if args.kill:
+                                waiter.spawn(p.wait)
+                                LOGGER.debug('Waiting for process or event')
+                                waiter.wait()
+                                try:
+                                    LOGGER.debug('Killing process')
+                                    kill_tree(p)
+                                except psutil.NoSuchProcess:
+                                    pass
 
-                                event_wait_thread, event_wait_event = waiter.spawn(event_bus.wait_for_changes, needed_args + list(args.listen))
-                                if args.kill:
-                                    waiter.spawn(p.wait)
-                                    LOGGER.debug('Waiting for process or event')
-                                    waiter.wait()
-                                    try:
-                                        LOGGER.debug('Killing process')
-                                        p.kill()
-                                    except OSError:
-                                        pass
-
-                                LOGGER.debug('Waiting for process %r...', p.pid)
-                                p.wait()
-                                LOGGER.debug('%r exited', p.pid)
+                            LOGGER.debug('Waiting for process %r...', p.pid)
+                            p.wait()
+                            LOGGER.debug('%r exited', p.pid)
 
                 # Use an event rather than thread.join
                 # so that C-c works
@@ -406,3 +412,9 @@ def stream_param(state, event_file, param):
         state.set(changes)
         message = Messages.update(changes)
         pub.push(message)
+
+def kill_tree(p):
+    parent = psutil.Process(p.pid)
+    for child in parent.children(recursive=True):  # or parent.children() for recursive=False
+        child.kill()
+    parent.kill()
