@@ -27,7 +27,10 @@ setuptools.setup(
     packages=['shfrp'],
     long_description='See https://github.com/talwrii/shfrp',
     entry_points={
-        'console_scripts': ['shfrp=shfrp.shfrp:main']
+        'console_scripts': [
+            'shfrp=shfrp.shfrp:main',
+            'shfrpgui=shfrp.shfrpgui:main'
+        ]
     },
     classifiers=[
         "License :: OSI Approved :: GNU Lesser General Public License v3 (LGPLv3)"
