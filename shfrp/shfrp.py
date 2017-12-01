@@ -38,6 +38,10 @@ run_parser.add_argument('--kill', action='store_true', default=False, help='Kill
 run_parser.add_argument(
     '--listen', '-l', type=str, action='append',
     help='Fire if the value of this parameter changed')
+run_parser.add_argument(
+    '--listen-file', '-f', type=str, action='append',
+    help='Fire if this changes')
+
 run_parser.add_argument('--output', '-o', type=str, help='Write output to this file (overwrite on change)')
 run_parser.add_argument('expr', type=str, action='append')
 set_parser = parsers.add_parser('set', help='Set a variables value')
@@ -130,11 +134,19 @@ class EventBus(object):
     def __init__(self, client):
         self._client = client
 
-    def wait_for_changes(self, variables):
+    def wait_for_changes(self, variables, files=None):
         LOGGER.debug('Waiting for changes to %r...', variables)
+
+        non_abs_files = [f for f in files if not os.path.isabs(f)]
+        if non_abs_files:
+            raise ValueError(non_abs_files)
+
         variables = set(variables)
         for message in self._client.get_messages():
-            if message['type'] == 'parameter_update' and set(message['changed']) & set(variables):
+            if message['type'] == 'file_change':
+                if message['file'] in files:
+                    return
+            elif message['type'] == 'parameter_update' and set(message['changed']) & set(variables):
                 return
             else:
                 LOGGER.debug('Ignoring message')
@@ -236,25 +248,56 @@ def ensure_file(filename):
         with open(filename, 'w'):
             pass
 
+
+class HackFileWatcher(object):
+    def __init__(self, publisher, files):
+        self._publisher = publisher
+        self._files = [os.path.abspath(filename) for filename in files]
+
+        # I find pynotify fiddley to use, use a process instead
+
+    def run(self):
+        p = subprocess.Popen(['inotifywait', '-m'] + self._files, stdout=subprocess.PIPE)
+
+        while True:
+            line = p.stdout.readline()
+            if line == b'':
+                break
+            line = line.rstrip('\n').rstrip(' ')
+            filename, _rest = line.rsplit(b' ', 1)
+            self._publisher.push(Messages.file_change(filename))
+
+
 def run_loop(state, event_file, args):
     client_id = str(uuid.uuid4())
+
+    if args.listen_file:
+        pub = StupidPubSub.Publisher(event_file)
+        pub.start()
+        file_watcher = HackFileWatcher(pub, args.listen_file)
+        spawn(file_watcher.run)
+
     with StupidPubSub.with_client(event_file) as client:
         event_bus = EventBus(client)
         expr = ' '.join(args.expr)
         needed_args = list(referenced_names(expr))
+
+        def wait_for_changes():
+            event_bus.wait_for_changes(needed_args + list(args.listen), files=args.listen_file or [])
+
         with state.with_listen(client_id, needed_args + list(args.listen)):
             while True:
                 try:
                     values = state.get_values(needed_args)
                 except ShfrpNoValue as e:
                     show_info('Could not find parameter {} in {}'.format(e.key, expr))
-                    event_bus.wait_for_changes(needed_args + list(args.listen))
+                    wait_for_changes()
                     continue
                 else:
                     command = expr.format(**values)
                     if args.echo:
                         print(command)
-                        event_bus.wait_for_changes(needed_args + list(args.listen))
+                        wait_for_changes()
                         continue
                     else:
                         file_manager = open(args.output, 'w') if args.output is not None else identity_manager(sys.stdout)
@@ -267,22 +310,22 @@ def run_loop(state, event_file, args):
                         with with_restore_tty():
                             p = subprocess.Popen(
                                 command, shell=True, executable='/bin/bash',
-                                stdout=subprocess.PIPE)
-
-                            output, _ = p.communicate()
+                                stdout=subprocess.PIPE if args.output is not None else sys.stdout)
 
                             if args.output is not None:
+                                output, _ = p.communicate()
+
                                 # minimise the time the file is invalid
                                 with tempfile.NamedTemporaryFile(delete=False) as f:
                                     f.write(output)
                                     f.close()
                                     os.rename(f.name, args.output)
-                            else:
-                                sys.stdout.write(output)
 
                             event_wait_thread, event_wait_event = waiter.spawn(
-                                event_bus.wait_for_changes, needed_args + list(args.listen))
+                                wait_for_changes)
                             if args.kill:
+                                # IMPROVEMENT: perhaps the kill should go through
+                                #    the event bus, this could would then become simpler
                                 waiter.spawn(p.wait)
                                 LOGGER.debug('Waiting for process or event')
                                 waiter.wait()
@@ -367,6 +410,13 @@ class Messages(object):
             ident=str(uuid.uuid4()),
             changed=list(changed),
             timestamp=time.time())
+
+    @staticmethod
+    def file_change(file):
+        return dict(
+            type='file_change',
+            file=file)
+
 
 @contextlib.contextmanager
 def identity_manager(x):
