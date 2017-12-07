@@ -16,7 +16,9 @@ shfrp = None # Talk to shfrp via ipc - I want to keep gui tools out of shfrp
 PARSER = argparse.ArgumentParser(description='')
 PARSER.add_argument('--debug', action='store_true', help='Print debug output')
 parsers = PARSER.add_subparsers(dest='command')
-subparser = parsers.add_parser('edit', help='Edit a value')
+edit_parser = parsers.add_parser('edit', help='Edit a value')
+edit_parser.add_argument('param', type=str, nargs='?')
+
 subparser = parsers.add_parser('clip-push', help='Push something from the clipboard into a value')
 
 def rofi_prompt(prompt, choices):
@@ -42,7 +44,10 @@ def main():
 
     if args.command == 'edit':
         params = get_params()
-        parameter = rofi_prompt('Which value to edit', [d['name'] for d in params])
+        if args.param is None:
+            parameter = rofi_prompt('Which value to edit', [d['name'] for d in params])
+        else:
+            parameter = args.param
 
         for param_data in params:
             if param_data['name'] == parameter:
