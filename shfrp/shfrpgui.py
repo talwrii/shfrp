@@ -7,6 +7,7 @@ import json
 import logging
 import subprocess
 import xerox
+import screeninfo
 
 LOGGER = logging.getLogger()
 
@@ -24,7 +25,7 @@ subparser = parsers.add_parser('reset', help='Push something from the clipboard 
 
 def rofi_prompt(prompt, choices):
     p = subprocess.Popen(
-        ['rofi', '-dmenu', '-p', prompt],
+        ['rofi', '-width', '100%', '-dmenu', '-p', prompt],
         stdout=subprocess.PIPE, stdin=subprocess.PIPE)
     choice_string = '\n'.join(choices)
     reply, _ = p.communicate(choice_string)
@@ -35,8 +36,9 @@ def get_params():
     return json.loads(subprocess.check_output(['shfrp', 'params', '--json']))
 
 def zenity_read(prompt, value):
-    print((prompt, value))
-    return subprocess.check_output(['zenity', '--entry', '--text', prompt, '--entry-text', value])
+    monitor = screeninfo.get_monitors()[0]
+    # yad seems to deal with --width better than zenity
+    return subprocess.check_output(['yad', '--entry', '--width', str(monitor.width).encode('utf8'), '--text', prompt, '--entry-text', value]).strip('\n')
 
 def main():
     args = PARSER.parse_args()
