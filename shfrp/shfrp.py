@@ -22,6 +22,7 @@ import termcolor
 import termios
 
 LOGGER = logging.getLogger()
+FILE_LOGGER = logging.getLogger('filewatch')
 
 DEFAULT_DATA = os.path.join(os.environ['HOME'], '.config', 'shfrp')
 
@@ -135,7 +136,7 @@ class EventBus(object):
         self._client = client
 
     def wait_for_changes(self, variables, files=None):
-        LOGGER.debug('Waiting for changes to %r...', variables)
+        FILE_LOGGER.debug('Waiting for changes to variables(%r) and files (%r)...', variables, files)
 
         non_abs_files = [f for f in files if not os.path.isabs(f)]
         if non_abs_files:
@@ -149,7 +150,7 @@ class EventBus(object):
             elif message['type'] == 'parameter_update' and set(message['changed']) & set(variables):
                 return
             else:
-                LOGGER.debug('Ignoring message')
+                FILE_LOGGER.debug('Ignoring message')
         else:
             raise ConnectionLost()
 
