@@ -259,22 +259,31 @@ def ensure_file(filename):
 
 
 class HackFileWatcher(object):
-    def __init__(self, publisher, files):
+    def __init__(self, publisher, files, client_id):
         self._publisher = publisher
         self._files = [os.path.abspath(filename) for filename in files]
+        self.client_id = client_id
 
         # I find pynotify fiddley to use, use a process instead
 
     def run(self):
-        p = subprocess.Popen(['inotifywait', '-m'] + self._files, stdout=subprocess.PIPE)
+        try:
+            commands = ['inotifywait', '-e', 'MODIFY', '-m'] + self._files
+            FILE_LOGGER.debug('Spawning %r', commands)
 
-        while True:
-            line = p.stdout.readline()
-            if line == b'':
-                break
-            line = line.rstrip('\n').rstrip(' ')
-            filename, _rest = line.rsplit(b' ', 1)
-            self._publisher.push(Messages.file_change(filename))
+            p = subprocess.Popen(
+                commands, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+            while True:
+                line = p.stdout.readline()
+                FILE_LOGGER.debug('Filewatcher line: %r', line)
+                if line == b'':
+                    break
+                line = line.rstrip('\n').rstrip(' ')
+                filename, _rest = line.rsplit(b' ', 1)
+                self._publisher.push(Messages.file_change(self.client_id, filename))
+        finally:
+            self._publisher.push(Messages.component_quit(self.client_id, name='file_watcher', files=self._files))
 
 
 def run_loop(state, event_file, args):
@@ -283,7 +292,7 @@ def run_loop(state, event_file, args):
     if args.listen_file:
         pub = StupidPubSub.Publisher(event_file)
         pub.start()
-        file_watcher = HackFileWatcher(pub, args.listen_file)
+        file_watcher = HackFileWatcher(pub, args.listen_file, client_id)
         spawn(file_watcher.run)
 
     with StupidPubSub.with_client(event_file) as client:
@@ -421,10 +430,16 @@ class Messages(object):
             timestamp=time.time())
 
     @staticmethod
-    def file_change(file):
+    def file_change(client_id, file):
         return dict(
+            client_id=client_id,
             type='file_change',
             file=file)
+
+
+    @staticmethod
+    def component_quit(client_id, **kwargs):
+        return dict(client_id=client_id, **kwargs)
 
 
 @contextlib.contextmanager

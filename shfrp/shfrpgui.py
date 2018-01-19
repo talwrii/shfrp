@@ -20,6 +20,7 @@ edit_parser = parsers.add_parser('edit', help='Edit a value')
 edit_parser.add_argument('param', type=str, nargs='?')
 
 subparser = parsers.add_parser('clip-push', help='Push something from the clipboard into a value')
+subparser = parsers.add_parser('reset', help='Push something from the clipboard into a value')
 
 def rofi_prompt(prompt, choices):
     p = subprocess.Popen(
