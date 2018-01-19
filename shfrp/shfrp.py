@@ -398,9 +398,9 @@ def main():
         pub = StupidPubSub.Publisher(event_file)
         pub.start()
         pub.push(message)
-    elif args.command in 'stream-param':
+    elif args.command == 'stream-param':
         stream_param(state, event_file, args.param)
-    elif args.command in 'params':
+    elif args.command == 'params':
         json_result = []
         with state.with_listened() as listened:
             for param, value, _listeners, history in listened:
