@@ -166,7 +166,8 @@ class State(object):
     def with_data(self):
         with with_json_data(os.path.join(self._data_dir, 'data.json')) as data:
             data.setdefault('listened', dict())
-            data.setdefault('parameters', dict())
+            data.setdefault('paraeters', dict())
+            data.setdefault('parameter.history', dict())
             yield data
 
     @contextlib.contextmanager
@@ -195,6 +196,10 @@ class State(object):
     def set(self, pairs):
         with self.with_data() as data:
             data["parameters"].update(**pairs)
+            for key, value in pairs.items():
+                data["parameter.history"].setdefault(key, list())
+                data["parameter.history"][key].append(value)
+
 
     @contextlib.contextmanager
     def with_listened(self):
@@ -202,8 +207,11 @@ class State(object):
             result = []
             for name, listeners in data['listened'].items():
                 value = data['parameters'].get(name)
-                result.append([name, value, list(listeners)])
+                history = data['parameter.history'].get(name)
+                result.append([name, value, list(listeners), history])
             yield result
+
+
 
 
 class ShfrpNoValue(Exception):
@@ -386,7 +394,7 @@ def main():
     elif args.command in 'params':
         json_result = []
         with state.with_listened() as listened:
-            for param, value, _listeners in listened:
+            for param, value, _listeners, history in listened:
                 if args.color:
                     flag = termcolor.colored('set', 'green') if value is not None else termcolor.colored('unset', 'red')
                 else:
@@ -394,7 +402,7 @@ def main():
                 if not args.json:
                     print(param, flag, repr(value))
                 else:
-                    json_result.append(dict(name=param, value=value))
+                    json_result.append(dict(name=param, value=value, history=history))
 
         if args.json:
             print(json.dumps(json_result))

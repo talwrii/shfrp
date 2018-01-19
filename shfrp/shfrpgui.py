@@ -59,12 +59,16 @@ def main():
             value = param_data['value']
         else:
             value = ''
-
-        new_value = zenity_read('new value:', value if value is not None else '').strip('\n')
+        old_value = rofi_prompt('select value to edit:', [''] + (param_data.get('history', []) or [])).strip('\n')
+        new_value = zenity_read('Edit value', old_value)
         subprocess.check_call(['shfrp', 'set', parameter, new_value])
     elif args.command == 'clip-push':
         params = get_params()
         parameter = rofi_prompt('Which value to edit', [d['name'] for d in params])
         subprocess.check_call(['shfrp', 'set', parameter, xerox.paste(xsel=True)])
+    elif args.command == 'reset':
+        params = get_params()
+        parameter = rofi_prompt('Which value to edit', [d['name'] for d in params])
+        subprocess.check_call(['shfrp', 'reset', parameter])
     else:
     	raise ValueError(args.command)
