@@ -3,6 +3,7 @@ from __future__ import (absolute_import, division, print_function,
                         unicode_literals)
 
 import argparse
+import collections
 import contextlib
 import json
 import logging
@@ -20,6 +21,8 @@ import psutil
 import termcolor
 
 import termios
+
+from . import formula
 
 LOGGER = logging.getLogger()
 FILE_LOGGER = logging.getLogger('filewatch')
@@ -50,6 +53,13 @@ set_parser.add_argument('key', type=str)
 set_parser.add_argument('value', type=str)
 reset_parser = parsers.add_parser('reset', help='Cause variables that use this parameter to update')
 reset_parser.add_argument('parameter', type=str)
+
+formula_parser = parsers.add_parser('formula', help='Create a value that is updated as other values change')
+formula_parser.add_argument('name', type=str)
+formula_parser.add_argument('language', type=str, choices=formula.LANGUAGES)
+formula_parser.add_argument('formula', type=str)
+
+formulas_parser = parsers.add_parser('formulas', help='List formulas')
 
 stream_param = parsers.add_parser(
     'stream-param',
@@ -168,6 +178,7 @@ class State(object):
             data.setdefault('listened', dict())
             data.setdefault('paraeters', dict())
             data.setdefault('parameter.history', dict())
+            data.setdefault('formulas', dict())
             yield data
 
     @contextlib.contextmanager
@@ -210,6 +221,17 @@ class State(object):
                 history = data['parameter.history'].get(name)
                 result.append([name, value, list(listeners), history])
             yield result
+
+    def set_formula(self, name, language, formula):
+        with self.with_data() as data:
+            data['formulas'][name] = (language, formula)
+
+    def get_formulas(self):
+        with self.with_data() as data:
+            for name, (language, formula) in data['formulas'].items():
+                yield Formula(name=name, language=language, formula=formula)
+
+Formula = collections.namedtuple('Formula', 'name language formula')
 
 
 
@@ -415,7 +437,11 @@ def main():
 
         if args.json:
             print(json.dumps(json_result))
-
+    elif args.command == 'formula':
+        state.set_formula(args.name, args.language, args.formula)
+    elif args.command == 'formulas':
+        for formula in state.get_formulas():
+            print(formula.name, formula.language, formula.formula)
     else:
         raise ValueError(args.command)
 
