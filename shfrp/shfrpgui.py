@@ -62,7 +62,8 @@ def main():
             value = param_data['value']
         else:
             value = ''
-        old_value = rofi_prompt('select value to edit:', [''] + (param_data.get('history', []) or [])).strip('\n')
+        history = param_data.get('history', []) or []
+        old_value = rofi_prompt('select value to edit:', [''] + list(remove_dups(history))).strip('\n')
         new_value = zenity_read('Edit value', old_value)
         subprocess.check_call(['shfrp', 'set', parameter, new_value])
     elif args.command == 'clip-push':
@@ -75,3 +76,13 @@ def main():
         subprocess.check_call(['shfrp', 'reset', parameter])
     else:
     	raise ValueError(args.command)
+
+def remove_dups(lst):
+    result = []
+    found = set()
+    for x in reversed(lst):
+        if x not in found:
+            found.add(x)
+            result.append(x)
+    return reversed(result)
+
