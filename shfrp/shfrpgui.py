@@ -11,8 +11,9 @@ import screeninfo
 
 LOGGER = logging.getLogger()
 
-
-shfrp = None # Talk to shfrp via ipc - I want to keep gui tools out of shfrp
+# Talk to shfrp via ipc -
+# I want to cleanly separate the interface from the core
+shfrp = None
 
 PARSER = argparse.ArgumentParser(description='')
 PARSER.add_argument('--debug', action='store_true', help='Print debug output')
